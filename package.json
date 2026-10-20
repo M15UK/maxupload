@@ -1,0 +1,14 @@
+{
+  "name": "maxupload",
+  "version": "1.0.0",
+  "private": true,
+  "description": "In-browser video converter that prepares max-quality, high-FPS uploads for TikTok.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test --experimental-test-coverage \"tests/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

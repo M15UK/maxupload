@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="meta.title">MaxUpload | TikTok video optimizer</title>
+    <meta
+      name="description"
+      data-i18n-content="meta.description"
+      content="Make TikTok uploads in max quality, up to 120 fps. Runs in your browser."
+    />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net/npm/mediabunny@1.61.3/dist/bundles/mediabunny.min.mjs 'sha256-p3Qp22/1/o8UCtZvOlUMvMWlGI5DjRMxZkJSHtld4kU='; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' https://compressbase.com; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=JetBrains+Mono:wght@500;600&display=swap"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "mediabunny": "https://cdn.jsdelivr.net/npm/mediabunny@1.61.3/dist/bundles/mediabunny.min.mjs"
+        },
+        "integrity": {
+          "https://cdn.jsdelivr.net/npm/mediabunny@1.61.3/dist/bundles/mediabunny.min.mjs": "sha384-aU2srW47uCJ9dFsqXHiqY181kQV7CECRowPAC70qnnWgpXbEZOQrvJxQwFeI5Gqa"
+        }
+      }
+    </script>
+    <script type="module" src="src/app.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a id="home-link" class="logo" href="./" lang="en">Max<span>Upload</span></a>
+      <div class="header-actions">
+        <span class="badge" data-i18n="header.badge">Runs on your device</span>
+        <button id="language-toggle" type="button" class="language-toggle" lang="ar" data-i18n="header.switchLanguage">
+          العربية
+        </button>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="hero">
+        <h1 data-i18n="hero.title">Max quality, high FPS TikTok uploads</h1>
+        <p class="lead" data-i18n="hero.lead">Choose a video, check the settings, and download a file ready for TikTok, up to 120 fps.</p>
+      </div>
+
+      <ol class="steps" data-i18n-aria-label="steps.aria" aria-label="Steps">
+        <li data-step="video" data-i18n="steps.video">Video</li>
+        <li data-step="settings" data-i18n="steps.settings">Settings</li>
+        <li data-step="download" data-i18n="steps.download">Download</li>
+      </ol>
+
+      <div id="unsupported" class="notice notice--error" data-i18n="unsupported" hidden></div>
+      <div id="error" class="notice notice--error" role="alert" hidden></div>
+
+      <section id="step-video" class="card" aria-labelledby="video-heading">
+        <h2 id="video-heading" data-i18n="video.heading">Choose your video</h2>
+        <label id="dropzone" class="dropzone">
+          <input id="file-input" type="file" accept="video/*,.mp4,.mov,.m4v,.mkv,.webm" />
+          <span class="dropzone__icon" aria-hidden="true">+</span>
+          <strong id="dropzone-title" data-i18n="video.select">Select video</strong>
+          <span data-i18n="video.drop">or drag and drop it here</span>
+        </label>
+        <p class="hint" data-i18n="video.hint">MP4, MOV, MKV or WebM.</p>
+      </section>
+
+      <section id="step-settings" class="card" aria-labelledby="settings-heading" hidden>
+        <div class="file-summary">
+          <button id="change-video" type="button" class="link-button" data-i18n="settings.change">← Change video</button>
+          <div>
+            <strong id="source-name" dir="auto"></strong>
+            <span id="source-meta" class="muted"></span>
+          </div>
+        </div>
+
+        <h2 id="settings-heading" data-i18n="settings.heading">Settings</h2>
+        <!-- Built by app.js from SETTING_GROUPS: the mode choice, then that mode's settings. -->
+        <form id="settings-form"></form>
+
+        <dl id="plan" class="plan" aria-live="polite"></dl>
+        <ul id="warnings" class="warnings"></ul>
+
+        <button id="start" type="button" class="button button--primary" data-i18n="settings.start">Convert video →</button>
+      </section>
+
+      <section id="step-convert" class="card" aria-labelledby="convert-heading" hidden>
+        <h2 id="convert-heading" data-i18n="convert.heading">Converting…</h2>
+        <progress id="progress" max="1" value="0"></progress>
+        <p id="progress-text" class="muted" aria-live="polite"></p>
+        <p class="hint" data-i18n="convert.hint"></p>
+        <button id="cancel" type="button" class="button" data-i18n="convert.cancel">Cancel</button>
+      </section>
+
+      <section id="step-done" class="card" aria-labelledby="done-heading" hidden>
+        <h2 id="done-heading" data-i18n="done.heading">Ready for TikTok</h2>
+        <video id="preview" controls playsinline muted></video>
+        <p id="result-meta" class="muted"></p>
+        <ul id="result-warnings" class="warnings"></ul>
+        <div class="actions">
+          <a id="download-upload" class="button button--primary" download></a>
+          <a id="download-preview" class="button" download data-i18n="done.downloadPreview">Download normal MP4</a>
+        </div>
+        <div id="patch-instructions" class="instructions" hidden>
+          <h3 data-i18n="done.instructionsHeading">How to upload the patched file</h3>
+          <ol>
+            <li data-i18n="done.instruction1"></li>
+            <li data-i18n="done.instruction2"></li>
+            <li data-i18n="done.instruction3"></li>
+          </ol>
+        </div>
+        <button id="convert-another" type="button" class="link-button" data-i18n="done.convertAnother">Convert another video</button>
+      </section>
+    </main>
+
+    <footer class="site-footer muted" data-i18n="footer">Not affiliated with TikTok.</footer>
+  </body>
+</html>
