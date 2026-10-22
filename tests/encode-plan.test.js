@@ -76,6 +76,7 @@ test('TikTok defaults use the tested recipe: HEVC 1080p, 60 fps, 7.5 Mbps, patch
   assert.equal(plan.videoBitrate, TIKTOK_BITRATE);
   assert.equal(plan.method, 'variant-1');
   assert.equal(plan.patchLocally, false);
+  assert.equal(plan.keyFrameInterval, 1);
   assert.equal(plan.enhance, null);
   assert.equal(plan.audioCopy, true);
 });
@@ -157,6 +158,7 @@ test('Compress uses H.264 with no TikTok patch and no enhancer', () => {
   assert.equal(plan.mode, 'compress');
   assert.equal(plan.codec, 'avc');
   assert.equal(plan.method, null);
+  assert.equal(plan.keyFrameInterval, null);
   assert.equal(plan.enhance, null);
 });
 

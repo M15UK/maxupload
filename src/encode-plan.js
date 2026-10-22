@@ -39,6 +39,7 @@ import { METHOD_VARIANTS } from './compressbase-method.js';
  * @property {EnhanceParams | null} enhance
  * @property {string | null} method   CompressBase variant to apply, or null.
  * @property {boolean} patchLocally   Apply the method in the browser instead of through the API.
+ * @property {number | null} keyFrameInterval  Seconds between key frames, or null for the encoder default.
  * @property {PlanWarning[]} warnings
  */
 
@@ -95,6 +96,9 @@ const UHD_PIXELS = 2160 * 3840;
 // Variant 3 always runs locally: the API's version gives ghost frames full frame durations, and
 // TikTok refused to publish a file like that.
 const LOCAL_PATCH_METHOD = 'variant-3';
+// A key frame every second, as in TikQuality's 4K file: a phone that stalls while streaming can
+// resume quickly instead of waiting for the next key frame.
+const TIKTOK_KEY_FRAME_SECONDS = 1;
 
 // Shader strengths for enhancer.js. Sharpening does most of the work; color and contrast stay subtle
 // because TikTok's re-encode and phone screens exaggerate saturation (strong color made skin look orange).
@@ -199,6 +203,7 @@ function planTikTok(source, settings) {
     },
     method,
     patchLocally: method === LOCAL_PATCH_METHOD,
+    keyFrameInterval: TIKTOK_KEY_FRAME_SECONDS,
     warnings: [capped && { code: 'fpsCapped', params: { fps: snapFrameRate(source.frameRate), cap } }],
   };
 }
@@ -222,6 +227,7 @@ function planCompress(source, settings) {
     enhance: null,
     method: null,
     patchLocally: false,
+    keyFrameInterval: null,
     warnings: [
       capped && { code: 'fpsCapped', params: { fps: snapFrameRate(source.frameRate), cap } },
       videoBitrate < bestBitrate * LOW_QUALITY_RATIO && { code: 'lowQuality' },

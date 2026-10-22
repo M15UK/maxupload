@@ -27,7 +27,8 @@ const FULL_BOX = u32s(0);
 const TIMES = u32s(0x11111111, 0x22222222);
 const GHOST = Uint8Array.of(0, 0, 0, 4, 0, 0, 0, 0);
 
-// Media: six 4-byte video samples (two per chunk) and two 4-byte audio samples in one chunk.
+// Media: six 4-byte video samples (two per chunk, one per 1/60 s) and two 4-byte audio samples in
+// one chunk (one per 2/60 s), laid out in 0.5 s style blocks like the converter writes.
 const VIDEO_CHUNKS = [ascii('AAAABBBB'), ascii('CCCCDDDD'), ascii('EEEEFFFF')];
 const AUDIO_CHUNK = ascii('zzzzyyyy');
 
@@ -63,9 +64,10 @@ function buildMp4({ offsetsBox = 'stco', withCtts = false, withEdts = false } = 
           box('stsz', FULL_BOX, u32s(0, 6, 4, 4, 4, 4, 4, 4)),
           box(offsetsBox, FULL_BOX, u32s(3, ...videoOffsets)),
         ],
-        withEdts ? [box('edts', box('elst', FULL_BOX, u32s(1, 6, 0, 0x10000)))] : [],
+        withEdts ? [box('edts', box('elst', FULL_BOX, u32s(1, 6, 1, 0x10000)))] : [],
       ),
       trak('soun', [
+        box('stts', FULL_BOX, u32s(1, 2, 2)),
         box('stsc', FULL_BOX, u32s(1, 1, 2, 1)),
         box('stsz', FULL_BOX, u32s(0, 2, 4, 4)),
         box('stco', FULL_BOX, u32s(1, audioOffset)),
@@ -94,6 +96,25 @@ function find(bytes, path, nth = 0) {
 const words = (payload) =>
   Array.from({ length: payload.length / 4 }, (_, i) => new DataView(payload.buffer, payload.byteOffset).getUint32(4 * i));
 const table = (mp4, trakIndex, type) => words(find(find(mp4, ['moov', 'trak'], trakIndex), ['mdia', 'minf', 'stbl', type]));
+const decode = (bytes) => new TextDecoder().decode(bytes);
+
+/** Every sample's bytes in sample order, read back through stsc, stco and stsz like a player. */
+function samplesOf(mp4, trakIndex) {
+  const [, , count, ...sizes] = table(mp4, trakIndex, 'stsz');
+  const [, , ...chunkOffsets] = table(mp4, trakIndex, 'stco');
+  const [, runCount, ...runs] = table(mp4, trakIndex, 'stsc');
+  const samples = [];
+  chunkOffsets.forEach((chunkOffset, chunk) => {
+    const run = [...Array(runCount).keys()].findLast((r) => runs[3 * r] - 1 <= chunk);
+    for (let i = 0, at = chunkOffset; i < runs[3 * run + 1] && samples.length < count; i++) {
+      const size = sizes[samples.length];
+      samples.push(decode(mp4.subarray(at, at + size)));
+      at += size;
+    }
+  });
+  return samples;
+}
+
 const patch = async (mp4) => new Uint8Array(await applyGhostPatch(mp4, new Blob([mp4])).arrayBuffer());
 
 test('adds 17/3 ghost samples, one per chunk, after the real video samples', async () => {
@@ -103,11 +124,17 @@ test('adds 17/3 ghost samples, one per chunk, after the real video samples', asy
   const [, , sampleCount, ...sizes] = table(output, 0, 'stsz');
   assert.equal(sampleCount, 6 + ghosts);
   assert.deepEqual(sizes, [4, 4, 4, 4, 4, 4, ...Array(ghosts).fill(8)]);
-  assert.deepEqual(table(output, 0, 'stsc'), [0, 2, 1, 2, 1, 4, 1, 1]);
   const [, chunkCount, ...offsets] = table(output, 0, 'stco');
-  assert.equal(chunkCount, 3 + ghosts);
-  assert.deepEqual(offsets.slice(3), Array(ghosts).fill(output.length - 8));
+  const realChunks = chunkCount - ghosts;
+  assert.deepEqual(table(output, 0, 'stsc').slice(-3), [realChunks + 1, 1, 1]);
+  assert.deepEqual(offsets.slice(realChunks), Array(ghosts).fill(output.length - 8));
   assert.deepEqual(output.subarray(-8), GHOST);
+});
+
+test('interleaves audio and video frame by frame in time order, like FFmpeg', async () => {
+  const output = await patch(buildMp4());
+
+  assert.equal(decode(find(output, ['mdat']).subarray(0, 32)), 'AAAAzzzzBBBBCCCCyyyyDDDDEEEEFFFF');
 });
 
 test('puts video on a 90 kHz clock with a one-tick last frame, so ghosts take almost no time', async () => {
@@ -119,13 +146,19 @@ test('puts video on a 90 kHz clock with a one-tick last frame, so ghosts take al
   assert.deepEqual(table(output, 0, 'ctts'), [0, 1, 6, 2 * 1500]);
 });
 
-test('keeps every real chunk offset pointing at the same media, in both tracks', async () => {
+test('reads back every sample with its own bytes, in both tracks', async () => {
   const output = await patch(buildMp4());
+  const video = samplesOf(output, 0);
 
-  const [, , ...videoOffsets] = table(output, 0, 'stco');
-  VIDEO_CHUNKS.forEach((chunk, i) => assert.deepEqual(output.subarray(videoOffsets[i], videoOffsets[i] + 8), chunk));
-  const [, , audioOffset] = table(output, 1, 'stco');
-  assert.deepEqual(output.subarray(audioOffset, audioOffset + 8), AUDIO_CHUNK);
+  assert.deepEqual(video.slice(0, 6), ['AAAA', 'BBBB', 'CCCC', 'DDDD', 'EEEE', 'FFFF']);
+  assert.ok(video.slice(6).every((sample) => sample === decode(GHOST)));
+  assert.deepEqual(samplesOf(output, 1), ['zzzz', 'yyyy']);
+});
+
+test('keeps a video edit list in step with the new clock', async () => {
+  const output = await patch(buildMp4({ withEdts: true }));
+
+  assert.deepEqual(words(find(output, ['moov', 'trak', 'edts', 'elst'])), [0, 1, 6, 1500, 0x10000]);
 });
 
 test('writes the same header as CompressBase: ffmpeg-style ftyp, a free box, no timestamps', async () => {
@@ -144,5 +177,4 @@ test('refuses files it cannot patch safely', () => {
 
   assert.throws(() => applyGhostPatch(concat(ftyp, mdat, moov), new Blob([mp4])), /fast-start/);
   assert.throws(() => applyGhostPatch(buildMp4({ offsetsBox: 'co64' }), new Blob([mp4])), /stco/);
-  assert.throws(() => applyGhostPatch(buildMp4({ withEdts: true }), new Blob([mp4])), /edit list/);
 });

@@ -90,6 +90,7 @@ function videoOptions(plan, codec, enhancer) {
     quality: new Quality({ bitrate: plan.videoBitrate }),
     allowTransformationMetadata: false,
     forceTranscode: true,
+    ...(plan.keyFrameInterval && { keyFrameInterval: plan.keyFrameInterval }),
   };
   return enhancer
     ? { ...base, process: enhancer.process, processedWidth: plan.width, processedHeight: plan.height }
