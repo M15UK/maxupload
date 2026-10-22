@@ -1,10 +1,14 @@
-// GPU enhancer (WebGL2): contrast-adaptive sharpening, a gentle S-curve and vibrance.
+// GPU enhancer (WebGL2): contrast-adaptive sharpening, an HDR look (local tone mapping), a gentle
+// S-curve and vibrance.
 // It runs on every frame after resizing, so it sharpens exactly the pixels TikTok receives.
 // This is classic image processing, not generative AI: it makes existing detail crisper and
 // colors richer, but it cannot invent detail that was never recorded.
 import { AppError } from './app-error.js';
 
 /** @typedef {import('./encode-plan.js').EnhanceParams} EnhanceParams */
+
+// The HDR look measures brightness over areas about 1/24 of the short side (90 px on 4K).
+const HDR_AREAS_PER_SHORT_SIDE = 24;
 
 const VERTEX_SHADER = `#version 300 es
 out vec2 vUv;
@@ -23,15 +27,25 @@ uniform float uSharpness;
 uniform float uVibrance;
 uniform float uContrast;
 uniform float uRadius;
+uniform float uHdr;
+uniform float uHdrLod;
 in vec2 vUv;
 out vec4 outColor;
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
 // How much of the vibrance boost skin tones are spared (1.0 = fully protected).
 const float SKIN_PROTECTION = 0.85;
+// HDR look at full strength: how far shadows rise, highlights fall and local contrast grows.
+const float HDR_SHADOW_LIFT = 0.18;
+const float HDR_HIGHLIGHT_PULL = 0.12;
+const float HDR_LOCAL_CONTRAST = 0.3;
+// Brightness can at most double (so lifted shadows don't turn noise into grain) and drop by 20%
+// (so dark areas next to bright ones don't get a dark halo).
+const float HDR_MAX_GAIN = 2.0;
+const float HDR_MIN_GAIN = 0.8;
 
 vec3 tap(vec2 offset) {
-  return texture(uImage, vUv + offset * uRadius * uTexel).rgb;
+  return textureLod(uImage, vUv + offset * uRadius * uTexel, 0.0).rgb;
 }
 
 // 1.0 for skin-like colors: red >= green >= blue with an orange hue (roughly 5–45 degrees).
@@ -55,6 +69,14 @@ void main() {
   vec3 amount = sqrt(clamp(min(lo, 1.0 - hi) / max(hi, vec3(1e-4)), 0.0, 1.0));
   vec3 weight = amount * (-1.0 / mix(8.0, 5.0, uSharpness));
   vec3 color = clamp((center + (north + south + west + east) * weight) / (1.0 + 4.0 * weight), 0.0, 1.0);
+
+  // HDR look: compare each pixel with the average brightness around it (a small mip level), lift
+  // dark areas, hold back bright ones and add local contrast, like a merged HDR photo.
+  float surround = dot(textureLod(uImage, vUv, uHdrLod).rgb, LUMA);
+  float lum = dot(color, LUMA);
+  float tone = (1.0 - smoothstep(0.0, 0.5, surround)) * HDR_SHADOW_LIFT - smoothstep(0.55, 1.0, surround) * HDR_HIGHLIGHT_PULL;
+  float target = lum + uHdr * (tone + HDR_LOCAL_CONTRAST * (lum - surround));
+  color = clamp(color * clamp(target / max(lum, 1e-3), HDR_MIN_GAIN, HDR_MAX_GAIN), 0.0, 1.0);
 
   // Gentle S-curve for punch.
   color = mix(color, color * color * (3.0 - 2.0 * color), uContrast);
@@ -99,8 +121,9 @@ function createProgram(gl) {
 function createFrameTexture(gl) {
   const texture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, texture);
-  // The output is the same size as the input, so each pixel maps to exactly one texel.
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  // The output is the same size as the input, so each pixel maps to exactly one texel (level 0 is
+  // read with NEAREST). Mipmaps give the HDR look each pixel's surrounding brightness.
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -115,6 +138,8 @@ function setUniforms(gl, program, { width, height, params }) {
   gl.uniform1f(location('uVibrance'), params.vibrance);
   gl.uniform1f(location('uContrast'), params.contrast);
   gl.uniform1f(location('uRadius'), params.radius);
+  gl.uniform1f(location('uHdr'), params.hdr);
+  gl.uniform1f(location('uHdrLod'), Math.log2(Math.min(width, height) / HDR_AREAS_PER_SHORT_SIDE));
 }
 
 /**
@@ -153,6 +178,7 @@ export function createEnhancer({ width, height, params }) {
   function process(sample) {
     if (gl.isContextLost()) throw new AppError('enhancerUnavailable');
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sample.toCanvasImageSource());
+    gl.generateMipmap(gl.TEXTURE_2D);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return canvas;
   }

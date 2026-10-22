@@ -1,11 +1,10 @@
-// English UI text. Keys must match messages/ar.js. Placeholders use {name}.
-// No dashes in visible text. Setting options have a title and a longer description.
+// All visible UI text. Placeholders use {name}.
+// No dashes in visible text. Setting options have a title and an optional longer description.
 export default Object.freeze({
   'meta.title': 'MaxUpload | TikTok video optimizer',
   'meta.description':
     'Convert videos for TikTok at max quality and up to 120 fps. Everything runs in your browser; nothing is uploaded.',
   'header.badge': 'Runs on your device',
-  'header.switchLanguage': 'العربية',
   'footer': 'Not affiliated with TikTok.',
 
   'hero.title': 'Max quality, high FPS TikTok uploads',
@@ -32,7 +31,7 @@ export default Object.freeze({
   'settings.size': 'Size',
   'settings.compressResolution': 'Resolution',
   'settings.compressFrameRate': 'Frame rate',
-  'settings.enhance': 'Enhancer',
+  'settings.enhance': 'Enhancer + HDR',
   'settings.method': 'Compress Method',
   'settings.start': 'Start →',
   'tag.recommended': 'Recommended',
@@ -65,11 +64,11 @@ export default Object.freeze({
   'enhance.strong.hint': 'Max sharpness and color',
 
   'method.variant-1': 'Variant 1',
-  'method.variant-1.hint': 'Best for most videos',
+  'method.variant-1.hint': 'Best for 1080p',
   'method.variant-2': 'Variant 2',
-  'method.variant-2.hint': 'Stronger, also tested',
+  'method.variant-2.hint': 'A 1080p backup',
   'method.variant-3': 'Variant 3',
-  'method.variant-3.hint': 'Lighter, not tested yet',
+  'method.variant-3.hint': 'Best for 4K',
   'size.small': 'Small',
   'size.small.hint': 'Up to 10 MB',
   'size.medium': 'Medium',
@@ -116,16 +115,14 @@ export default Object.freeze({
   'done.downloadUpload': 'Download TikTok file ({size})',
   'done.downloadCompressed': 'Download MP4 ({size})',
   'done.downloadPreview': 'Download normal MP4',
-  'done.instructionsHeading': 'How to upload the patched file',
-  'done.instruction1': 'Upload the TikTok file to TikTok, then check it in the TikTok app.',
-  'done.instruction2': "It may play oddly on your computer; that's expected for patched files. The preview above is the normal MP4.",
-  'done.instruction3':
-    'This is an unofficial method from CompressBase, and TikTok can change how it handles uploads. If the post looks wrong, try another variant or upload the normal MP4.',
+  'done.instructionsHeading': 'How to upload',
+  'done.instruction1': 'Upload the converted file to TikTok',
+  'done.instruction2': "It may not play on your computer, that's normal",
+  'done.instruction3': 'If the post looks wrong, try another variant',
   'done.convertAnother': 'Convert another video',
 
   'warning.hdrSource':
     'This video is HDR. It is converted to standard color (SDR), which can look darker or duller on TikTok. For the most accurate colors, export SDR (Rec.709) from your editor.',
-  'warning.methodNeeds1080p': 'The patch works up to 1080p only, so this file is uploaded without it and TikTok will lower its quality. Choose 1080p for the best result.',
   'warning.fpsCapped': 'Your video is {fps} fps. This setting keeps up to {cap} fps.',
   'warning.lowQuality': 'This size is small for this video, so quality will drop. Pick a bigger size or a lower resolution.',
   'warning.methodFailed': 'The CompressBase method failed ({detail}), so the download is the normal MP4.',

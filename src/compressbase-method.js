@@ -120,7 +120,13 @@ function parseResponse(buffer) {
   return { plan, ftyp: take(plan.ftypLength), moov: take(plan.moovLength), ghost: take(plan.ghostLength), tail: take(tailLength) };
 }
 
-function boxHeader(name, headerLen, size) {
+/**
+ * @param {string} name  Four-character box type.
+ * @param {number} headerLen  8, or 16 for a 64-bit size.
+ * @param {number} size  Whole box size, header included.
+ * @returns {Uint8Array}
+ */
+export function boxHeader(name, headerLen, size) {
   const header = new Uint8Array(headerLen);
   const view = new DataView(header.buffer);
   if (headerLen === LARGE_BOX_HEADER_SIZE) {

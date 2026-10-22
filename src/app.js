@@ -1,7 +1,7 @@
 import { AppError } from './app-error.js';
 import { DEFAULT_SETTINGS, MODE_GROUPS, SETTING_GROUPS, planEncode } from './encode-plan.js';
 import { formatBitrate, formatBytes, formatDuration, outputFileName } from './format.js';
-import { LANGUAGES, detectLanguage, hasMessage, isolate, translate, translateError } from './i18n.js';
+import { hasMessage, translate as t, translateError } from './i18n.js';
 
 // Loaded lazily so the page still renders (and can explain the problem) if the CDN is unreachable.
 const converterModule = import('./converter.js');
@@ -27,8 +27,6 @@ const OPTION_TAGS = Object.freeze({
   'method.variant-3': 'beta',
 });
 const GROUP_TAGS = Object.freeze({ enhance: 'optional' });
-const OTHER_LANGUAGE = Object.freeze({ en: 'ar', ar: 'en' });
-const LANGUAGE_STORAGE_KEY = 'maxupload.language';
 const VIDEO_EXTENSIONS = /\.(mp4|mov|m4v|mkv|webm)$/i;
 const MIN_PROGRESS_FOR_ETA = 0.02;
 const CODEC_NAMES = Object.freeze({ avc: 'H.264', hevc: 'HEVC' });
@@ -36,7 +34,6 @@ const CODEC_NAMES = Object.freeze({ avc: 'H.264', hevc: 'HEVC' });
 const $ = (id) => document.getElementById(id);
 const dom = {
   homeLink: $('home-link'),
-  languageToggle: $('language-toggle'),
   unsupported: $('unsupported'),
   error: $('error'),
   dropzone: $('dropzone'),
@@ -63,12 +60,11 @@ const dom = {
 };
 
 let state = Object.freeze({
-  language: 'en',
   file: null,
   source: null,
   settings: DEFAULT_SETTINGS,
   isReading: false,
-  error: null, // { error, fallbackCode } — translated on render so it follows language changes
+  error: null, // { error, fallbackCode }
   progress: null, // { fraction, startedAt }
   abortController: null,
   output: null, // { result, plan, previewUrl, uploadUrl }
@@ -78,8 +74,6 @@ function setState(patch) {
   state = Object.freeze({ ...state, ...patch });
 }
 
-const t = (key, params) => translate(state.language, key, params);
-
 function textElement(tag, text, className) {
   const element = document.createElement(tag);
   element.textContent = text;
@@ -87,13 +81,13 @@ function textElement(tag, text, className) {
   return element;
 }
 
-// "1080×1920 · 120 fps · 13.0 MB": each part is isolated so it stays intact in Arabic (RTL) order.
-const joinParts = (parts) => parts.map(isolate).join(' · ');
+// "1080×1920 · 120 fps · 13.0 MB"
+const joinParts = (parts) => parts.join(' · ');
 
 // ---------- Shared rendering ----------
 
 function renderError() {
-  const message = state.error ? translateError(state.language, state.error.error, state.error.fallbackCode) : '';
+  const message = state.error ? translateError(state.error.error, state.error.fallbackCode) : '';
   dom.error.textContent = message;
   dom.error.hidden = !message;
 }
@@ -138,7 +132,7 @@ function renderOptions(container, name, choices, keyPrefix, selected) {
     text.className = 'option__text';
     text.append(titleWithTag('strong', t(key), OPTION_TAGS[key], 'option__title'));
     // Hints are optional: some options are clear from their title alone.
-    if (hasMessage(state.language, `${key}.hint`)) text.append(textElement('span', t(`${key}.hint`), 'option__hint'));
+    if (hasMessage(`${key}.hint`)) text.append(textElement('span', t(`${key}.hint`), 'option__hint'));
     option.append(input, text);
     return option;
   });
@@ -160,24 +154,9 @@ function renderSettingOptions() {
   dom.settingsForm.replaceChildren(...groups.map(settingFieldset));
 }
 
-// ---------- Language ----------
+// ---------- Static text ----------
 
-function readSavedLanguage() {
-  try {
-    return localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  } catch {
-    return null; // Storage blocked (private mode, etc.): fall back to the browser language.
-  }
-}
-
-function saveLanguage(language) {
-  try {
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
-  } catch {
-    // Remembering the choice is a convenience only; the page works without it.
-  }
-}
-
+// The page's fixed text comes from messages/en.js, so all wording lives in one file.
 function applyStaticTranslations() {
   document.querySelectorAll('[data-i18n]').forEach((element) => {
     element.textContent = t(element.dataset.i18n);
@@ -188,24 +167,6 @@ function applyStaticTranslations() {
   document.querySelectorAll('[data-i18n-content]').forEach((element) => {
     element.setAttribute('content', t(element.dataset.i18nContent));
   });
-}
-
-function setLanguage(language) {
-  setState({ language });
-  const { htmlLang, dir } = LANGUAGES[language];
-  document.documentElement.lang = htmlLang;
-  document.documentElement.dir = dir;
-  dom.languageToggle.lang = LANGUAGES[OTHER_LANGUAGE[language]].htmlLang;
-  applyStaticTranslations();
-  renderSettingOptions();
-  setDropzoneBusy(state.isReading);
-  renderError();
-  if (state.source) {
-    renderSource();
-    renderPlan();
-  }
-  if (state.progress) renderProgress();
-  if (state.output) renderResult();
 }
 
 // ---------- Step 1: choose a video ----------
@@ -283,8 +244,7 @@ function planReadout(plan) {
 function specCell({ label, value, highlight }) {
   const cell = document.createElement('div');
   if (highlight) cell.className = 'is-highlight';
-  // Isolated so "1080×1920" and "≈ 13.0 MB" stay intact yet align with the page direction.
-  cell.append(textElement('dt', label), textElement('dd', isolate(value)));
+  cell.append(textElement('dt', label), textElement('dd', value));
   return cell;
 }
 
@@ -297,7 +257,7 @@ function renderPlan() {
     dom.start.disabled = false;
     return plan;
   } catch (error) {
-    dom.plan.replaceChildren(textElement('div', translateError(state.language, error, 'conversionFailed'), 'plan-error'));
+    dom.plan.replaceChildren(textElement('div', translateError(error, 'conversionFailed'), 'plan-error'));
     dom.warnings.replaceChildren();
     dom.start.disabled = true;
     return null;
@@ -430,11 +390,6 @@ function wireControls() {
     resetToStart();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
-  dom.languageToggle.addEventListener('click', () => {
-    const language = OTHER_LANGUAGE[state.language];
-    saveLanguage(language);
-    setLanguage(language);
-  });
   dom.settingsForm.addEventListener('change', () => {
     const settings = readSettings();
     const modeChanged = settings.mode !== state.settings.mode;
@@ -455,7 +410,9 @@ function init() {
   dom.unsupported.hidden = ENCODING_SUPPORTED;
   wireDropzone();
   wireControls();
-  setLanguage(detectLanguage(readSavedLanguage(), navigator.languages ?? []));
+  applyStaticTranslations();
+  renderSettingOptions();
+  setDropzoneBusy(false);
   showSection('step-video');
   converterModule.catch(() => showError(new AppError('libraryLoad')));
 }

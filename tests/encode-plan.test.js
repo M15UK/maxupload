@@ -5,8 +5,10 @@ import {
   COMPRESS_SIZES,
   DEFAULT_SETTINGS,
   ENHANCE_LEVELS,
+  MAX_VIDEO_BITRATE,
   MODE_GROUPS,
   SETTING_GROUPS,
+  TIKTOK_4K_BITRATE,
   TIKTOK_BITRATE,
   fitResolution,
   planEncode,
@@ -73,6 +75,7 @@ test('TikTok defaults use the tested recipe: HEVC 1080p, 60 fps, 7.5 Mbps, patch
   assert.equal(plan.frameRate, 60);
   assert.equal(plan.videoBitrate, TIKTOK_BITRATE);
   assert.equal(plan.method, 'variant-1');
+  assert.equal(plan.patchLocally, false);
   assert.equal(plan.enhance, null);
   assert.equal(plan.audioCopy, true);
 });
@@ -89,14 +92,24 @@ test('TikTok frame rate choices: up to 120, or keep the original with no limit',
   assert.deepEqual(planEncode(UHD_120, { ...TIKTOK, frameRate: 'max120' }).warnings, []);
 });
 
-test('TikTok can keep 4K, but then the patch cannot apply and the user is told', () => {
-  const plan = planEncode(UHD_120, { ...TIKTOK, resolution: 'original' });
+test('TikTok 4K copies the recipe TikTok serves as original 4K: H.264, 40 Mbps, Variant 3 patched locally', () => {
+  const plan = planEncode(UHD_120, { ...TIKTOK, resolution: 'original', method: 'variant-1' });
 
   assert.equal(plan.width, 2160);
   assert.equal(plan.height, 3840);
-  assert.equal(plan.method, null);
-  assert.ok(warningCodes(plan).includes('methodNeeds1080p'));
-  assert.equal(plan.videoBitrate, TIKTOK_BITRATE * 4);
+  assert.equal(plan.codec, 'avc');
+  assert.equal(plan.videoBitrate, TIKTOK_4K_BITRATE);
+  assert.equal(plan.method, 'variant-3');
+  assert.equal(plan.patchLocally, true);
+  assert.deepEqual(warningCodes(plan), ['fpsCapped']);
+});
+
+test('TikTok bitrate above 1080p scales with pixel count from the 4K rate, within the cap', () => {
+  const qhd = planEncode({ ...UHD_120, width: 1440, height: 2560 }, { ...TIKTOK, resolution: 'original' });
+  const uhd8k = planEncode({ ...UHD_120, width: 4320, height: 7680 }, { ...TIKTOK, resolution: 'original' });
+
+  assert.equal(qhd.videoBitrate, Math.round((TIKTOK_4K_BITRATE * 1440 * 2560) / (2160 * 3840)));
+  assert.equal(uhd8k.videoBitrate, MAX_VIDEO_BITRATE);
 });
 
 test('"Original" resolution keeps up to 8K in both modes', () => {
@@ -110,9 +123,12 @@ test('"Original" resolution keeps up to 8K in both modes', () => {
   assert.equal(Math.min(compress.width, compress.height), 4320);
 });
 
-test('TikTok passes the chosen patch variant through', () => {
-  assert.equal(planEncode(UHD_120, { ...TIKTOK, method: 'variant-2' }).method, 'variant-2');
-  assert.equal(planEncode(UHD_120, { ...TIKTOK, method: 'variant-3' }).method, 'variant-3');
+test('TikTok passes the chosen patch variant through; Variant 3 always runs locally', () => {
+  const variant2 = planEncode(UHD_120, { ...TIKTOK, method: 'variant-2' });
+  const variant3 = planEncode(UHD_120, { ...TIKTOK, method: 'variant-3' });
+
+  assert.deepEqual([variant2.method, variant2.patchLocally], ['variant-2', false]);
+  assert.deepEqual([variant3.method, variant3.patchLocally, variant3.codec], ['variant-3', true, 'hevc']);
 });
 
 test('TikTok enhancer levels map to shader settings, wider on 4K', () => {
@@ -125,6 +141,12 @@ test('keeps enhancer color changes subtle so TikTok re-encoding does not exagger
     assert.ok(level.vibrance <= 0.3);
     assert.ok(level.contrast <= 0.1);
   });
+});
+
+test('both enhancer levels include the HDR look, stronger on Strong', () => {
+  assert.ok(ENHANCE_LEVELS.natural.hdr > 0);
+  assert.ok(ENHANCE_LEVELS.strong.hdr > ENHANCE_LEVELS.natural.hdr);
+  assert.ok(ENHANCE_LEVELS.strong.hdr <= 1);
 });
 
 // ---------- Compress mode ----------

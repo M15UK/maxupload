@@ -13,6 +13,7 @@ import {
 import { AppError } from './app-error.js';
 import { createEnhancer } from './enhancer.js';
 import { requestMethodPatch } from './compressbase-method.js';
+import { applyGhostPatch } from './ghost-patch.js';
 
 /** @typedef {import('./encode-plan.js').EncodePlan} EncodePlan */
 /** @typedef {import('./encode-plan.js').SourceInfo & { codec: string | null }} ProbedVideo */
@@ -109,22 +110,25 @@ function invalidConversionError(discardedTracks) {
 }
 
 /**
- * Builds the TikTok upload file. With a CompressBase variant selected, only the file's metadata is
- * sent to the CompressBase Method API; the media is spliced back in locally from `previewFile`.
- * A failed patch falls back to the normal MP4 rather than discarding a finished encode.
+ * Builds the TikTok upload file. Variants 1 and 2 send only the file's metadata to the CompressBase
+ * Method API and splice the media back in locally from `previewFile`; Variant 3 (also used for
+ * everything above 1080p) is applied in the browser. A failed patch falls back to the normal MP4
+ * rather than discarding a finished encode.
  */
 async function buildUploadFile(bytes, previewFile, plan, signal) {
   if (!plan.method) return { uploadFile: previewFile, methodApplied: false, methodError: null };
   try {
-    const uploadFile = await requestMethodPatch(bytes, previewFile, {
-      postingDevice: plan.method,
-      resolution: { width: plan.width, height: plan.height },
-      signal,
-    });
+    const uploadFile = plan.patchLocally
+      ? applyGhostPatch(bytes, previewFile)
+      : await requestMethodPatch(bytes, previewFile, {
+          postingDevice: plan.method,
+          resolution: { width: plan.width, height: plan.height },
+          signal,
+        });
     return { uploadFile, methodApplied: true, methodError: null };
   } catch (error) {
     if (signal?.aborted) throw error;
-    console.error('CompressBase method failed; offering the normal MP4 instead.', error);
+    console.error('Patch failed; offering the normal MP4 instead.', error);
     return { uploadFile: previewFile, methodApplied: false, methodError: describe(error) };
   }
 }

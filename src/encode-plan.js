@@ -22,7 +22,7 @@ import { METHOD_VARIANTS } from './compressbase-method.js';
  * @property {'original' | '1080p' | '720p'} compressResolution    Compress mode
  * @property {'original' | 'max60' | 'max30'} compressFrameRate    Compress mode
  *
- * @typedef {{ sharpness: number, vibrance: number, contrast: number }} EnhanceLevel
+ * @typedef {{ sharpness: number, vibrance: number, contrast: number, hdr: number }} EnhanceLevel  hdr: HDR look strength
  * @typedef {EnhanceLevel & { radius: number }} EnhanceParams  radius: sharpening tap distance in pixels
  * @typedef {{ code: string, params?: Record<string, number> }} PlanWarning
  *
@@ -38,6 +38,7 @@ import { METHOD_VARIANTS } from './compressbase-method.js';
  * @property {number} estimatedBytes
  * @property {EnhanceParams | null} enhance
  * @property {string | null} method   CompressBase variant to apply, or null.
+ * @property {boolean} patchLocally   Apply the method in the browser instead of through the API.
  * @property {PlanWarning[]} warnings
  */
 
@@ -85,15 +86,22 @@ const MEMORY_SAFE_BYTES = 1_000_000_000;
 // Verified on TikTok: HEVC 1080p at 7.5 Mbps plus the CompressBase patch is served as "original".
 export const TIKTOK_BITRATE = 7_500_000;
 const FULL_HD_PIXELS = 1080 * 1920;
-// The CompressBase API refuses video whose short side is above 1080 px.
+// The CompressBase API refuses video whose short side is above 1080 px. Larger video copies a post
+// TikTok serves as "original" 4K (TikQuality's): H.264 at 40 Mbps with the Variant 3 ghost patch,
+// which ghost-patch.js applies in the browser.
 const METHOD_MAX_SHORT_SIDE = 1080;
+export const TIKTOK_4K_BITRATE = 40_000_000;
+const UHD_PIXELS = 2160 * 3840;
+// Variant 3 always runs locally: the API's version gives ghost frames full frame durations, and
+// TikTok refused to publish a file like that.
+const LOCAL_PATCH_METHOD = 'variant-3';
 
 // Shader strengths for enhancer.js. Sharpening does most of the work; color and contrast stay subtle
 // because TikTok's re-encode and phone screens exaggerate saturation (strong color made skin look orange).
 export const ENHANCE_LEVELS = Object.freeze({
   off: null,
-  natural: Object.freeze({ sharpness: 0.5, vibrance: 0.15, contrast: 0.04 }),
-  strong: Object.freeze({ sharpness: 1, vibrance: 0.3, contrast: 0.08 }),
+  natural: Object.freeze({ sharpness: 0.5, vibrance: 0.15, contrast: 0.04, hdr: 0.5 }),
+  strong: Object.freeze({ sharpness: 1, vibrance: 0.3, contrast: 0.08, hdr: 1 }),
 });
 
 // Bits per pixel per frame for "best quality" H.264. Generous so sites that re-encode keep detail.
@@ -168,15 +176,19 @@ function planTikTok(source, settings) {
   const cap = FRAME_RATE_CAPS[settings.frameRate];
   const { frameRate, capped } = frameRateFor(source, cap);
   const audioBitrate = source.hasAudio ? HIGH_AUDIO_BITRATE : 0;
-  // 7.5 Mbps is the verified 1080p rate; larger output scales with pixel count.
-  const pixelScale = Math.max(1, (output.width * output.height) / FULL_HD_PIXELS);
-  const wanted = Math.min(MAX_VIDEO_BITRATE, Math.round(TIKTOK_BITRATE * pixelScale));
+  const pixels = output.width * output.height;
+  const isAbove1080p = Math.min(output.width, output.height) > METHOD_MAX_SHORT_SIDE;
+  const method = isAbove1080p ? LOCAL_PATCH_METHOD : settings.method;
+  // The verified rates are 7.5 Mbps at 1080p and 40 Mbps at 4K; other sizes scale with pixel count.
+  const scaled = isAbove1080p
+    ? (TIKTOK_4K_BITRATE * pixels) / UHD_PIXELS
+    : TIKTOK_BITRATE * Math.max(1, pixels / FULL_HD_PIXELS);
+  const wanted = Math.min(MAX_VIDEO_BITRATE, Math.round(scaled));
   const videoBitrate = Math.min(wanted, budgetBitrate(MEMORY_SAFE_BYTES, source.duration, audioBitrate));
-  const methodAvailable = Math.min(output.width, output.height) <= METHOD_MAX_SHORT_SIDE;
   const level = ENHANCE_LEVELS[settings.enhance];
   return {
     ...output,
-    codec: 'hevc',
+    codec: isAbove1080p ? 'avc' : 'hevc',
     frameRate,
     videoBitrate,
     audioBitrate,
@@ -185,11 +197,9 @@ function planTikTok(source, settings) {
       ...level,
       radius: Math.max(1, Math.round(Math.min(output.width, output.height) / TIKTOK_PLAYBACK_SHORT_SIDE)),
     },
-    method: methodAvailable ? settings.method : null,
-    warnings: [
-      capped && { code: 'fpsCapped', params: { fps: snapFrameRate(source.frameRate), cap } },
-      !methodAvailable && { code: 'methodNeeds1080p' },
-    ],
+    method,
+    patchLocally: method === LOCAL_PATCH_METHOD,
+    warnings: [capped && { code: 'fpsCapped', params: { fps: snapFrameRate(source.frameRate), cap } }],
   };
 }
 
@@ -211,6 +221,7 @@ function planCompress(source, settings) {
     audioCopy: sizeLimit === null,
     enhance: null,
     method: null,
+    patchLocally: false,
     warnings: [
       capped && { code: 'fpsCapped', params: { fps: snapFrameRate(source.frameRate), cap } },
       videoBitrate < bestBitrate * LOW_QUALITY_RATIO && { code: 'lowQuality' },

@@ -5,103 +5,71 @@
 
 **Live site: https://m15uk.github.io/maxupload/**
 
-A browser-based video converter that prepares max-quality, high frame rate uploads for TikTok and
-compresses videos for any other website. Everything runs on the user's device with WebCodecs; videos
-are never uploaded to a server.
+A free website that gets your videos ready for TikTok in the best quality, up to 4K and 120 FPS.
+It can also make videos smaller for any other website. Everything happens on your own device, so
+your videos are never uploaded anywhere.
 
-Available in English and Saudi Arabic (right-to-left).
+## What it does
 
-## Features
-
-- **TikTok mode:** HEVC 1080p at 7.5 Mbps with the CompressBase upload patch. In tests on real posts,
-  TikTok served this file as "original" quality instead of re-encoding it (see [Results](#results)).
-  - Resolution: 1080p, or original up to 8K
-  - Frame rate: 60 FPS, 120 FPS (experimental) or no limit
-  - Enhancer: off, natural or strong (GPU sharpening and color, see below)
-- **Compress mode:** smaller H.264 MP4 for any website.
-  - Size: up to 10 MB, 25 MB, 50 MB, or best quality with no limit
-  - Resolution: original up to 8K, 1080p or 720p
-  - Frame rate: no limit, 60 or 30 FPS
-- **Two languages:** English and Saudi Arabic with full right-to-left layout, remembered per browser.
-- **No server:** a static site. Decoding, resizing, enhancing and encoding all happen in the browser.
+* **TikTok mode:** converts your video so TikTok keeps it in original quality instead of lowering it.
+  * Resolution: 1080p, or your original up to 8K
+  * Frame rate: 60 FPS, 120 FPS (experimental) or no limit
+  * Enhancer + HDR: off, natural or strong, for sharper detail, brighter shadows and richer color
+  * Patch: Variant 1 (best for 1080p), Variant 2 (a 1080p backup) or Variant 3 (best for 4K)
+* **Compress mode:** makes a video smaller for any website.
+  * Size: up to 10 MB, 25 MB, 50 MB, or best quality with no limit
+  * Resolution: original up to 8K, 1080p or 720p
+  * Frame rate: no limit, 60 or 30 FPS
 
 ## Results
 
-Same 17-second, 60 FPS clip, uploaded to TikTok and measured from TikTok's own player data:
+Real uploads, checked with TikTok's own player data:
 
-| Upload | What TikTok served |
-| --- | --- |
-| H.264, 25 to 50 Mbps (plain or timescale-patched) | 576×1024, H.264, ~0.6 Mbps, 30 FPS |
-| HEVC 1080p 7.5 Mbps, no patch | 576×1024, H.264, 0.62 Mbps, 30 FPS |
-| **HEVC 1080p 7.5 Mbps + CompressBase patch** | **1080×1920, HEVC, 7.75 Mbps, 60 FPS ("original")** |
-
-The winning combination is the default TikTok mode.
+| What I uploaded | What TikTok played |
+| :-- | :-- |
+| 1080p H.264, 25 to 50 Mbps | 576×1024, 30 FPS, about 0.6 Mbps |
+| 1080p HEVC, 7.5 Mbps, no patch | 576×1024, 30 FPS, 0.62 Mbps |
+| **1080p HEVC, 7.5 Mbps, with the patch** | **1080×1920, 60 FPS, 7.75 Mbps (original)** |
+| **4K H.264, 40 Mbps, with Variant 3** | **2160×3840, 60 FPS, 40.5 Mbps (original)** |
 
 ## How it works
 
-```
-video file > decode (WebCodecs) > resize > enhancer (WebGL2, optional) > encode HEVC / H.264 > MP4
-                                                         TikTok mode: CompressBase metadata patch
-```
+1. Your browser opens the video and converts it with its own video encoder (WebCodecs).
+2. The optional enhancer runs on your graphics card (WebGL2) for every frame. Real HDR files are
+   not possible from a browser yet, so the HDR option is a look, not a 10 bit HDR file.
+3. For TikTok, a small patch changes only the file's info, not the video. Variants 1 and 2 use the
+   free CompressBase API, which only receives the file info. Variant 3 and all 4K videos are
+   patched right in your browser.
 
-- **Encode planning** (`src/encode-plan.js`): pure functions that choose resolution, constant frame
-  rate, bitrate and audio handling for each mode and size limit. Fully unit tested.
-- **Conversion** (`src/converter.js`): [Mediabunny](https://mediabunny.dev) on top of WebCodecs,
-  hardware-accelerated where the browser supports it.
-- **Enhancer** (`src/enhancer.js`): a WebGL2 shader per frame with contrast-adaptive sharpening,
-  a gentle S-curve and vibrance that protects skin tones. On 4K output the sharpening radius widens
-  so it survives TikTok's downscale to 1080p.
-- **Upload patch** (`src/compressbase-method.js`): a client for the free
-  [CompressBase Method API](https://compressbase.com/method-api), written from its published protocol.
-  Only the MP4 metadata (moov box and box layout) is sent; video and audio stay on the device, and
-  metadata tags such as GPS location are removed first.
-- **Translations** (`src/i18n.js`, `src/messages/`): message catalogs with placeholders wrapped in
-  Unicode direction isolates, so numbers like "1080×1920" and "25 MB" read correctly inside Arabic text.
-- **Security:** strict Content Security Policy, and the CDN library is pinned with Subresource Integrity.
+The site has a strict security policy, and the one outside library it loads is locked to a checked
+version.
 
-## Tech stack
+## Built with
 
-Vanilla JavaScript (ES modules, no build step) · WebCodecs · WebGL2 · Mediabunny ·
-Node.js test runner · GitHub Actions · GitHub Pages
+JavaScript (no build step) · WebCodecs · WebGL2 · Mediabunny · Node.js tests · GitHub Actions ·
+GitHub Pages
 
-## Run locally
+## Run it on your computer
 
-Requires Node.js 20 or newer. No install step is needed.
+You need Node.js 20 or newer. There is nothing to install.
 
 ```bash
-npm start   # http://localhost:5173
-npm test    # 56 unit tests with coverage
+npm start   # then open http://localhost:5173
+npm test    # runs the 56 tests
 ```
 
-Works best in a recent Chrome or Edge on a computer (WebCodecs HEVC and H.264 encoding).
-
-## Project structure
-
-```
-index.html                  page markup
-styles.css                  styles, including right-to-left rules
-src/app.js                  UI controller: steps, settings, progress, result
-src/encode-plan.js          encoding decisions for both modes (pure, tested)
-src/converter.js            Mediabunny / WebCodecs conversion
-src/enhancer.js             WebGL2 sharpening and color shader
-src/compressbase-method.js  CompressBase Method API client (tested)
-src/i18n.js                 translation lookup and bidi helpers
-src/messages/               English and Saudi Arabic text
-tests/                      node:test unit tests
-server.mjs                  small local static server
-```
+Works best in Chrome or Edge on a computer.
 
 ## Limits
 
-- TikTok shows 1080p at most, so larger files are reduced by TikTok.
-- 120 FPS on TikTok is not verified yet.
-- The output is held in browser memory, so files are kept under 1 GB.
+* 120 FPS on TikTok is not tested yet.
+* Videos are kept in your browser's memory, so files stay under 1 GB.
 
 ## Credits
 
-- [Mediabunny](https://mediabunny.dev) (MPL-2.0) for reading and writing media files.
-- [CompressBase](https://compressbase.com) for the Method API, used with the owner's permission.
-- Not affiliated with TikTok.
+* [Mediabunny](https://mediabunny.dev) (MPL 2.0 license) for reading and writing video files.
+* [CompressBase](https://compressbase.com) for the Method API, used with the owner's permission.
+* Not connected to TikTok.
 
 ## License
 

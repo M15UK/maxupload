@@ -1,6 +1,5 @@
 /**
- * An error shown to the user. The text is looked up by `code` in the active language
- * (see i18n.js), so the same error reads correctly in English and Arabic.
+ * An error shown to the user. Its text is looked up by `code` in messages/en.js (see i18n.js).
  */
 export class AppError extends Error {
   /**
